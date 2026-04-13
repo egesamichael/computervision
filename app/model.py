@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
+import zipfile
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
@@ -43,6 +46,15 @@ def _default_model_path() -> Path:
         if candidate.exists():
             return candidate
     return candidates[1]
+
+
+def _looks_like_hdf5(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            signature = handle.read(8)
+        return signature == b"\x89HDF\r\n\x1a\n"
+    except OSError:
+        return False
 
 
 DEFAULT_MODEL_PATH = _default_model_path()
@@ -102,6 +114,7 @@ class CoffeeDiseaseClassifier:
                 if self._model is None:
                     from tensorflow.keras.models import load_model
                     import tensorflow as tf
+                    import pathlib
 
                     print("\n🔄 Loading coffee disease model...")
                     print("📁 Path:", self.model_path)
@@ -109,6 +122,27 @@ class CoffeeDiseaseClassifier:
 
                     if not self.model_path.exists():
                         raise FileNotFoundError(f"Model not found at {self.model_path}")
+
+                    load_path = self.model_path
+                    temp_dir = None
+                    if load_path.suffix == ".keras" and not zipfile.is_zipfile(load_path):
+                        if _looks_like_hdf5(load_path):
+                            temp_dir = tempfile.TemporaryDirectory()
+                            temp_path = (
+                                pathlib.Path(temp_dir.name)
+                                / f"{load_path.stem}.h5"
+                            )
+                            shutil.copyfile(load_path, temp_path)
+                            load_path = temp_path
+                            print(
+                                "⚠️ Detected HDF5 model saved with .keras extension. "
+                                "Loading as .h5 for compatibility."
+                            )
+                        else:
+                            raise ValueError(
+                                "Model file ends with .keras but is not a valid Keras zip "
+                                "and does not look like an HDF5 file."
+                            )
 
                     class LegacyDepthwiseConv2D(tf.keras.layers.DepthwiseConv2D):
                         def __init__(self, *args, **kwargs):
@@ -121,11 +155,15 @@ class CoffeeDiseaseClassifier:
                             return super().from_config(config)
 
                     # Fix for older TF versions that don't accept DepthwiseConv2D.groups
-                    model = load_model(
-                        self.model_path,
-                        compile=False,
-                        custom_objects={"DepthwiseConv2D": LegacyDepthwiseConv2D},
-                    )
+                    try:
+                        model = load_model(
+                            load_path,
+                            compile=False,
+                            custom_objects={"DepthwiseConv2D": LegacyDepthwiseConv2D},
+                        )
+                    finally:
+                        if temp_dir is not None:
+                            temp_dir.cleanup()
 
                     self._model = self._ensure_model_compatible(model, tf)
 
