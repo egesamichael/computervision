@@ -53,6 +53,21 @@ Then set:
 export COFFEE_MODEL_PATH="/absolute/path/to/coffee_disease_compatible.keras"
 ```
 
+## Teachable Machine TensorFlow.js (Browser Inference)
+
+If you prefer to run inference in the browser instead of Python, export your model as
+TensorFlow.js:
+
+1. Teachable Machine -> Export -> TensorFlow.js -> Download my model.
+2. Copy `model.json`, `metadata.json`, and `weights.bin` into `app/static/tm/`.
+3. Restart the Flask app.
+
+The UI will load the model directly in the browser and only send predictions back to
+the server to save history and generate recommendations.
+
+Ensure your Teachable Machine class names match the labels in `app/labels.py`
+(for example "Coffee Leaf Rust", "Healthy", etc.) so recommendations map correctly.
+
 ## Project Layout
 
 ```text
@@ -173,4 +188,11 @@ You can change the model path or input size with environment variables:
 ```bash
 export COFFEE_MODEL_PATH="/absolute/path/to/your_model.keras"
 export COFFEE_MODEL_INPUT_SIZE=224
+```
+
+TensorFlow.js model overrides:
+
+```bash
+export TM_MODEL_URL="/static/tm/model.json"
+export TM_METADATA_URL="/static/tm/metadata.json"
 ```

@@ -30,7 +30,7 @@
       </div>
       <div class="feature-card">
         <span>Diagnosis Engine</span>
-        <strong>{{ model_name }}</strong>
+        <strong>Teachable Machine (Browser)</strong>
       </div>
       <div class="feature-card">
         <span>Field History</span>
@@ -73,76 +73,48 @@
         <textarea id="notes" name="notes" rows="3" placeholder="Yellowing edges, rust spots, etc.">{{ notes }}</textarea>
       </div>
 
-      <button type="submit">Run Diagnosis</button>
-      <p class="form-note">Analysis metadata and predictions are saved to build a field history.</p>
+      <button id="run-analysis" type="button">Run Diagnosis</button>
+      <p class="form-note">Runs in your browser using the Teachable Machine model.</p>
+      <p id="model-status" class="form-note muted-note"></p>
     </form>
-
-    {% if model_notice %}
-    <div class="notice">{{ model_notice }}</div>
-    {% endif %}
 
     {% if error %}
     <div class="alert">{{ error }}</div>
     {% endif %}
 
-    {% if image_data %}
-    <div class="results-grid">
+    <div id="client-error" class="alert hidden"></div>
+
+    <div id="results" class="results-grid hidden">
       <div class="preview-card">
         <h2>Uploaded Sample</h2>
-        <img src="{{ image_data }}" alt="Uploaded image preview">
-        <p>{{ filename }}</p>
+        <img id="image-preview" src="" alt="Uploaded image preview">
+        <p id="image-filename"></p>
         <div class="meta">
-          <span class="chip">{{ sample_type|title }}</span>
-          {% if location %}
-          <span class="chip">{{ location }}</span>
-          {% endif %}
+          <span id="chip-sample-type" class="chip"></span>
+          <span id="chip-location" class="chip hidden"></span>
         </div>
-        {% if notes %}
-        <p class="notes">{{ notes }}</p>
-        {% endif %}
+        <p id="notes-text" class="notes hidden"></p>
       </div>
 
       <div class="diagnosis-card">
         <h2>Diagnosis Summary</h2>
-        {% if prediction_unavailable %}
-        <p class="diagnosis-meta">Primary model unavailable. Results are hidden for now.</p>
-        {% elif diagnosis %}
-        <p class="diagnosis-label">{{ diagnosis.label }}</p>
-        <p class="diagnosis-meta">Confidence {{ "%.1f"|format(diagnosis.confidence * 100) }}%</p>
-        <h3>Recommendations</h3>
-        <ul class="recommendations">
-          {% for item in recommendations %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="diagnosis-meta">Run an analysis to see a diagnosis summary.</p>
-        {% endif %}
+        <p id="diagnosis-placeholder" class="diagnosis-meta">
+          Run an analysis to see a diagnosis summary.
+        </p>
+        <p id="diagnosis-label" class="diagnosis-label hidden"></p>
+        <p id="diagnosis-meta" class="diagnosis-meta hidden"></p>
+        <h3 id="recommendations-title" class="hidden">Recommendations</h3>
+        <ul id="recommendations-list" class="recommendations hidden"></ul>
       </div>
 
       <div class="prediction-card">
         <h2>Model Predictions</h2>
-        {% if prediction_unavailable %}
-        <p class="muted-note">Primary model is unavailable. Fallback results are hidden.</p>
-        {% else %}
-        <ol>
-          {% for prediction in predictions %}
-          <li>
-            <div class="prediction-line">
-              <strong>{{ prediction.label }}</strong>
-              <span>{{ "%.2f"|format(prediction.confidence * 100) }}%</span>
-            </div>
-            <div class="progress">
-              <div class="progress-bar" data-width="{{ '%.2f'|format(prediction.confidence * 100) }}"></div>
-            </div>
-          </li>
-          {% endfor %}
-        </ol>
-        <p class="muted-note">Predictions are saved to the field history log.</p>
-        {% endif %}
+        <ol id="predictions-list"></ol>
+        <p id="predictions-note" class="muted-note hidden">
+          Predictions are saved to the field history log.
+        </p>
       </div>
     </div>
-    {% endif %}
 
     {% if recent_predictions %}
     <div class="history">
@@ -170,12 +142,15 @@
   </section>
 </main>
 
-<script>
-  document.querySelectorAll(".progress-bar").forEach((bar) => {
-    const width = bar.dataset.width;
-    if (width) {
-      bar.style.width = `${width}%`;
-    }
-  });
-</script>
+<div
+  id="tm-config"
+  class="hidden"
+  data-model-url="{{ tm_model_url }}"
+  data-metadata-url="{{ tm_metadata_url }}"
+  data-store-predictions="{{ 'true' if store_predictions else 'false' }}"
+  data-top-predictions="{{ top_predictions }}"
+></div>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script src="{{ url_for('static', filename='js/tm-infer.js') }}"></script>
 {% endblock %}

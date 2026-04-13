@@ -13,6 +13,14 @@ class Config:
         "EfficientNetB0 (Coffee Disease)",
     )
     TOP_PREDICTIONS = 5
+    TM_MODEL_URL = os.environ.get(
+        "TM_MODEL_URL",
+        "/static/tm/model.json",
+    )
+    TM_METADATA_URL = os.environ.get(
+        "TM_METADATA_URL",
+        "/static/tm/metadata.json",
+    )
     COFFEE_MODEL_PATH = os.environ.get(
         "COFFEE_MODEL_PATH",
         os.path.join(BASE_DIR, "models", "coffee_disease_efficientnetb0.keras"),

@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from base64 import b64encode
-
 import csv
 from io import StringIO
 
 from flask import Blueprint, Response, current_app, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
-from .model import classifier
 from .recommendations import build_recommendations
 from .storage import (
     count_predictions,
@@ -22,113 +19,24 @@ from .storage import (
 main = Blueprint("main", __name__)
 
 
-def allowed_file(filename: str) -> bool:
-    return (
-        "." in filename
-        and filename.rsplit(".", 1)[1].lower() in current_app.config["ALLOWED_EXTENSIONS"]
-    )
-
-
 @main.route("/", methods=["GET", "POST"])
 def index():
     context = {
         "error": None,
-        "filename": None,
-        "image_data": None,
-        "model_name": classifier.default_name,
-        "model_notice": None,
-        "predictions": [],
-        "diagnosis": None,
-        "recommendations": [],
         "recent_predictions": [],
         "sample_type": "leaf",
         "location": "",
         "notes": "",
-        "prediction_unavailable": False,
+        "tm_model_url": current_app.config.get("TM_MODEL_URL"),
+        "tm_metadata_url": current_app.config.get("TM_METADATA_URL"),
+        "store_predictions": current_app.config.get("STORE_PREDICTIONS"),
+        "top_predictions": current_app.config.get("TOP_PREDICTIONS", 5),
     }
 
     if request.method == "POST":
-        sample_type = request.form.get("sample_type", "leaf").strip().lower()
-        if sample_type not in {"leaf", "berry", "other"}:
-            sample_type = "leaf"
-        context["sample_type"] = sample_type
-        context["location"] = request.form.get("location", "").strip()
-        context["notes"] = request.form.get("notes", "").strip()
-
-        uploaded_file = request.files.get("image")
-        if uploaded_file is None or uploaded_file.filename == "":
-            context["error"] = "Choose an image before running prediction."
-            context["recent_predictions"] = _load_recent_predictions()
-            return render_template("index.html", **context)
-
-        filename = secure_filename(uploaded_file.filename)
-        context["filename"] = filename
-
-        if not allowed_file(filename):
-            allowed = ", ".join(sorted(current_app.config["ALLOWED_EXTENSIONS"]))
-            context["error"] = f"Unsupported file type. Use one of: {allowed}."
-            context["recent_predictions"] = _load_recent_predictions()
-            return render_template("index.html", **context)
-
-        raw_bytes = uploaded_file.read()
-        if not raw_bytes:
-            context["error"] = "The uploaded file is empty."
-            context["recent_predictions"] = _load_recent_predictions()
-            return render_template("index.html", **context)
-
-        try:
-            context["predictions"] = classifier.predict(
-                raw_bytes,
-                top=current_app.config["TOP_PREDICTIONS"],
-            )
-            mime_type = uploaded_file.mimetype or "image/jpeg"
-            encoded_image = b64encode(raw_bytes).decode("utf-8")
-            context["image_data"] = f"data:{mime_type};base64,{encoded_image}"
-            context["model_name"] = classifier.default_name
-            context["model_notice"] = None
-
-            if classifier.used_fallback:
-                context["prediction_unavailable"] = True
-                context["predictions"] = []
-                context["error"] = (
-                    "Primary model is unavailable right now, so results are hidden."
-                )
-            elif context["predictions"]:
-                context["model_name"] = classifier.name
-                context["model_notice"] = classifier.notice
-                top_prediction = context["predictions"][0]
-                context["diagnosis"] = {
-                    "label": top_prediction["label"],
-                    "confidence": top_prediction["confidence"],
-                }
-                context["recommendations"] = build_recommendations(
-                    sample_type=sample_type,
-                    top_label=top_prediction["label"],
-                    confidence=top_prediction["confidence"],
-                )
-
-                if current_app.config.get("STORE_PREDICTIONS"):
-                    try:
-                        save_prediction(
-                            current_app.config["PREDICTIONS_DB"],
-                            filename=filename,
-                            mime_type=mime_type,
-                            sample_type=sample_type,
-                            location=context["location"] or None,
-                            notes=context["notes"] or None,
-                            top_label=top_prediction["label"],
-                            top_confidence=top_prediction["confidence"],
-                            predictions=context["predictions"],
-                        )
-                    except Exception:
-                        current_app.logger.exception(
-                            "Failed to save prediction history for %s", filename
-                        )
-        except Exception:
-            current_app.logger.exception("Prediction failed for %s", filename)
-            context["error"] = (
-                "Prediction failed. Upload a valid image and try again."
-            )
+        context["error"] = (
+            "Browser-based inference is required. Please enable JavaScript."
+        )
 
     context["recent_predictions"] = _load_recent_predictions()
     return render_template("index.html", **context)
@@ -225,6 +133,75 @@ def history_csv():
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=prediction_history.csv"
     return response
+
+
+@main.route("/api/diagnose", methods=["POST"])
+def diagnose_api():
+    payload = request.get_json(silent=True) or {}
+    predictions = payload.get("predictions")
+    if not isinstance(predictions, list):
+        return {"error": "Invalid predictions payload."}, 400
+
+    cleaned: list[dict[str, float | str]] = []
+    for item in predictions:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label", "")).strip()
+        if not label:
+            continue
+        try:
+            confidence = float(item.get("confidence", 0))
+        except (TypeError, ValueError):
+            continue
+        confidence = max(0.0, min(1.0, confidence))
+        cleaned.append({"label": label, "confidence": confidence})
+
+    if not cleaned:
+        return {"error": "No usable predictions provided."}, 400
+
+    cleaned.sort(key=lambda item: float(item["confidence"]), reverse=True)
+    top_prediction = cleaned[0]
+
+    sample_type = str(payload.get("sample_type", "leaf")).strip().lower()
+    if sample_type not in {"leaf", "berry", "other"}:
+        sample_type = "leaf"
+
+    recommendations = build_recommendations(
+        sample_type=sample_type,
+        top_label=str(top_prediction["label"]),
+        confidence=float(top_prediction["confidence"]),
+    )
+
+    filename = str(payload.get("filename") or "upload")
+    mime_type = str(payload.get("mime_type") or "image/jpeg")
+    location = payload.get("location") or None
+    notes = payload.get("notes") or None
+
+    if current_app.config.get("STORE_PREDICTIONS"):
+        try:
+            save_prediction(
+                current_app.config["PREDICTIONS_DB"],
+                filename=secure_filename(filename) or "upload",
+                mime_type=mime_type,
+                sample_type=sample_type,
+                location=location,
+                notes=notes,
+                top_label=str(top_prediction["label"]),
+                top_confidence=float(top_prediction["confidence"]),
+                predictions=cleaned,
+            )
+        except Exception:
+            current_app.logger.exception("Failed to save prediction history.")
+            return {"error": "Failed to save prediction history."}, 500
+
+    return {
+        "ok": True,
+        "diagnosis": {
+            "label": str(top_prediction["label"]),
+            "confidence": float(top_prediction["confidence"]),
+        },
+        "recommendations": recommendations,
+    }
 
 
 @main.route("/history/delete/<int:prediction_id>", methods=["POST"])
