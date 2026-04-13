@@ -44,6 +44,7 @@ def index():
         "sample_type": "leaf",
         "location": "",
         "notes": "",
+        "prediction_unavailable": False,
     }
 
     if request.method == "POST":
@@ -83,10 +84,18 @@ def index():
             mime_type = uploaded_file.mimetype or "image/jpeg"
             encoded_image = b64encode(raw_bytes).decode("utf-8")
             context["image_data"] = f"data:{mime_type};base64,{encoded_image}"
-            context["model_name"] = classifier.name
-            context["model_notice"] = classifier.notice
+            context["model_name"] = classifier.default_name
+            context["model_notice"] = None
 
-            if context["predictions"]:
+            if classifier.used_fallback:
+                context["prediction_unavailable"] = True
+                context["predictions"] = []
+                context["error"] = (
+                    "Primary model is unavailable right now, so results are hidden."
+                )
+            elif context["predictions"]:
+                context["model_name"] = classifier.name
+                context["model_notice"] = classifier.notice
                 top_prediction = context["predictions"][0]
                 context["diagnosis"] = {
                     "label": top_prediction["label"],

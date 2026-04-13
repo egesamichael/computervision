@@ -7,7 +7,18 @@ from threading import Lock
 
 from .labels import COFFEE_DISEASE_LABELS
 
-DEFAULT_INPUT_SIZE = 224
+
+def _default_input_size() -> int:
+    raw = os.environ.get("COFFEE_MODEL_INPUT_SIZE")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return 224
+
+
+DEFAULT_INPUT_SIZE = _default_input_size()
 
 
 def _find_project_root(start: Path) -> Path:
@@ -23,7 +34,15 @@ def _default_model_path() -> Path:
     if env_path:
         return Path(env_path)
     project_root = _find_project_root(Path(__file__).resolve().parent)
-    return project_root / "models" / "keras_model.h5"
+    candidates = [
+        project_root / "models" / "coffee_disease_efficientnetb0.keras",
+        project_root / "models" / "keras_model.h5",
+        project_root / "keras_model.h5",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[1]
 
 
 DEFAULT_MODEL_PATH = _default_model_path()
@@ -38,13 +57,44 @@ class CoffeeDiseaseClassifier:
         self,
         model_path: str | Path | None = None,
         labels: list[str] | None = None,
-        input_size: int = DEFAULT_INPUT_SIZE,
+        input_size: int | None = None,
     ) -> None:
         self.model_path = (
             DEFAULT_MODEL_PATH if model_path is None else Path(model_path)
         )
         self.labels = labels or COFFEE_DISEASE_LABELS
-        self.input_size = (input_size, input_size)
+        resolved_input = DEFAULT_INPUT_SIZE if input_size is None else input_size
+        self.input_size = (resolved_input, resolved_input)
+
+    def _rebuild_sequential(self, model, tf):
+        inputs = tf.keras.Input(
+            shape=(self.input_size[0], self.input_size[1], 3)
+        )
+        x = inputs
+        for layer in model.layers:
+            if isinstance(layer, tf.keras.layers.InputLayer):
+                continue
+            x = layer(x)
+            if isinstance(x, (tuple, list)):
+                x = x[0]
+        return tf.keras.Model(inputs, x, name=f"{model.name}_compat")
+
+    def _ensure_model_compatible(self, model, tf):
+        try:
+            dummy = tf.zeros((1, self.input_size[0], self.input_size[1], 3))
+            _ = model(dummy, training=False)
+            return model
+        except Exception as exc:
+            message = str(exc)
+            if (
+                "expects 1 input(s), but it received 2 input tensors" in message
+                and isinstance(model, tf.keras.Sequential)
+            ):
+                print("⚠️ Detected legacy model output mismatch. Rebuilding model for compatibility...")
+                repaired = self._rebuild_sequential(model, tf)
+                _ = repaired(dummy, training=False)
+                return repaired
+            raise
 
     def _get_model(self):
         if self._model is None:
@@ -71,11 +121,13 @@ class CoffeeDiseaseClassifier:
                             return super().from_config(config)
 
                     # Fix for older TF versions that don't accept DepthwiseConv2D.groups
-                    self._model = load_model(
+                    model = load_model(
                         self.model_path,
                         compile=False,
                         custom_objects={"DepthwiseConv2D": LegacyDepthwiseConv2D},
                     )
+
+                    self._model = self._ensure_model_compatible(model, tf)
 
                     print("✅ Coffee disease model loaded successfully!\n")
 
@@ -173,6 +225,8 @@ class ModelRouter:
         self._fallback = fallback
         self._active = primary
         self.notice: str | None = None
+        self.used_fallback = False
+        self.last_fallback_predictions: list[dict[str, float | str]] | None = None
 
     @property
     def name(self) -> str:
@@ -187,13 +241,18 @@ class ModelRouter:
             predictions = self._primary.predict(raw_bytes, top=top)
             self._active = self._primary
             self.notice = None
+            self.used_fallback = False
+            self.last_fallback_predictions = None
             return predictions
 
         except Exception as e:
             print("❌ Primary model failed:", e)
             self._active = self._fallback
             self.notice = "Primary model failed. Using fallback ImageNet model."
-            return self._fallback.predict(raw_bytes, top=top)
+            self.used_fallback = True
+            fallback_predictions = self._fallback.predict(raw_bytes, top=top)
+            self.last_fallback_predictions = fallback_predictions
+            return fallback_predictions
 
 
 # 🔥 Initialize classifier
