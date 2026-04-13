@@ -5,13 +5,15 @@ from base64 import b64encode
 import csv
 from io import StringIO
 
-from flask import Blueprint, Response, current_app, render_template, request
+from flask import Blueprint, Response, current_app, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
 from .model import classifier
 from .recommendations import build_recommendations
 from .storage import (
     count_predictions,
+    delete_all_predictions,
+    delete_prediction,
     list_predictions,
     list_recent_predictions,
     save_prediction,
@@ -139,7 +141,7 @@ def _load_recent_predictions() -> list[dict[str, str | float]]:
 @main.route("/history", methods=["GET"])
 def history():
     context = {
-        "error": None,
+        "error": request.args.get("error") or None,
         "predictions": [],
         "total": 0,
         "limit": 50,
@@ -214,3 +216,33 @@ def history_csv():
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=prediction_history.csv"
     return response
+
+
+@main.route("/history/delete/<int:prediction_id>", methods=["POST"])
+def delete_history_item(prediction_id: int):
+    if not current_app.config.get("STORE_PREDICTIONS"):
+        return Response("Prediction storage is disabled.", status=400)
+    try:
+        delete_prediction(current_app.config["PREDICTIONS_DB"], prediction_id)
+    except Exception:
+        current_app.logger.exception(
+            "Failed to delete prediction history entry %s", prediction_id
+        )
+        return redirect(
+            url_for("main.history", error="Unable to delete that entry right now.")
+        )
+    return redirect(url_for("main.history"))
+
+
+@main.route("/history/clear", methods=["POST"])
+def clear_history():
+    if not current_app.config.get("STORE_PREDICTIONS"):
+        return Response("Prediction storage is disabled.", status=400)
+    try:
+        delete_all_predictions(current_app.config["PREDICTIONS_DB"])
+    except Exception:
+        current_app.logger.exception("Failed to clear prediction history.")
+        return redirect(
+            url_for("main.history", error="Unable to clear history right now.")
+        )
+    return redirect(url_for("main.history"))

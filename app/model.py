@@ -60,11 +60,21 @@ class CoffeeDiseaseClassifier:
                     if not self.model_path.exists():
                         raise FileNotFoundError(f"Model not found at {self.model_path}")
 
-                    # 🔥 Fix for DepthwiseConv2D / old TF models
+                    class LegacyDepthwiseConv2D(tf.keras.layers.DepthwiseConv2D):
+                        def __init__(self, *args, **kwargs):
+                            kwargs.pop("groups", None)
+                            super().__init__(*args, **kwargs)
+
+                        @classmethod
+                        def from_config(cls, config):
+                            config.pop("groups", None)
+                            return super().from_config(config)
+
+                    # Fix for older TF versions that don't accept DepthwiseConv2D.groups
                     self._model = load_model(
                         self.model_path,
                         compile=False,
-                        custom_objects={"DepthwiseConv2D": tf.keras.layers.DepthwiseConv2D},
+                        custom_objects={"DepthwiseConv2D": LegacyDepthwiseConv2D},
                     )
 
                     print("✅ Coffee disease model loaded successfully!\n")

@@ -237,6 +237,9 @@ button:hover {
   background: linear-gradient(135deg, #cd5521, #ee8c4f);
   font-weight: 700;
   transition: transform 160ms ease, box-shadow 160ms ease;
+  width: auto;
+  border: 0;
+  cursor: pointer;
 }
 
 .button-link:hover {
@@ -253,6 +256,34 @@ button:hover {
 
 .button-link.subtle:hover {
   box-shadow: none;
+}
+
+.button-link.danger {
+  background: linear-gradient(135deg, #b64c2a, #e07c3f);
+}
+
+.button-inline {
+  width: auto;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 33, 38, 0.14);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.button-inline:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 20px rgba(24, 33, 38, 0.12);
+}
+
+.button-inline.danger {
+  background: rgba(216, 99, 42, 0.14);
+  border-color: rgba(216, 99, 42, 0.35);
+  color: #7a2d0a;
 }
 
 .back-link {
@@ -457,7 +488,7 @@ button:hover {
 .history-header,
 .history-row {
   display: grid;
-  grid-template-columns: 1.3fr 0.7fr 0.8fr 1fr 1.2fr 1fr;
+  grid-template-columns: 1.2fr 0.7fr 0.8fr 1fr 1.2fr 1fr 0.7fr;
   gap: 1rem;
   align-items: center;
 }
@@ -480,6 +511,11 @@ button:hover {
 
 .history-row .strong {
   font-weight: 700;
+}
+
+.history-row-actions {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .truncate {

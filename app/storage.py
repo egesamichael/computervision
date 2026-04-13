@@ -140,3 +140,16 @@ def count_predictions(db_path: str) -> int:
     if row is None:
         return 0
     return int(row["total"])
+
+
+def delete_prediction(db_path: str, prediction_id: int) -> None:
+    with _connect(db_path) as connection:
+        connection.execute(
+            "DELETE FROM predictions WHERE id = ?",
+            (prediction_id,),
+        )
+
+
+def delete_all_predictions(db_path: str) -> None:
+    with _connect(db_path) as connection:
+        connection.execute("DELETE FROM predictions")

@@ -16,6 +16,11 @@
     </p>
     <div class="history-actions">
       <a class="button-link" href="{{ url_for('main.history_csv') }}">Download CSV</a>
+      <form method="post" action="{{ url_for('main.clear_history') }}">
+        <button class="button-link danger" type="submit" onclick="return confirm('Delete all history entries? This cannot be undone.');">
+          Delete All
+        </button>
+      </form>
     </div>
   </section>
 
@@ -33,6 +38,7 @@
         <span>Location</span>
         <span>Notes</span>
         <span>Timestamp</span>
+        <span>Actions</span>
       </div>
       {% for row in predictions %}
       <div class="history-row">
@@ -42,6 +48,13 @@
         <span>{{ row.location or "-" }}</span>
         <span class="truncate">{{ row.notes or "-" }}</span>
         <span>{{ row.created_at }}</span>
+        <span class="history-row-actions">
+          <form method="post" action="{{ url_for('main.delete_history_item', prediction_id=row.id) }}">
+            <button class="button-inline danger" type="submit" onclick="return confirm('Delete this history entry?');">
+              Delete
+            </button>
+          </form>
+        </span>
       </div>
       {% endfor %}
     </div>
