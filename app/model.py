@@ -7,9 +7,26 @@ from threading import Lock
 
 from .labels import COFFEE_DISEASE_LABELS
 
-# 🔥 FIXED: Use the correct .h5 path
-DEFAULT_MODEL_PATH = r"C:\Users\DELL\Documents\computervision\models\keras_model.h5"
 DEFAULT_INPUT_SIZE = 224
+
+
+def _find_project_root(start: Path) -> Path:
+    markers = ("pyproject.toml", "requirements.txt", ".git")
+    for candidate in (start, *start.parents):
+        if any((candidate / marker).exists() for marker in markers):
+            return candidate
+    return start
+
+
+def _default_model_path() -> Path:
+    env_path = os.environ.get("COFFEE_MODEL_PATH")
+    if env_path:
+        return Path(env_path)
+    project_root = _find_project_root(Path(__file__).resolve().parent)
+    return project_root / "models" / "keras_model.h5"
+
+
+DEFAULT_MODEL_PATH = _default_model_path()
 
 
 class CoffeeDiseaseClassifier:
@@ -19,11 +36,13 @@ class CoffeeDiseaseClassifier:
 
     def __init__(
         self,
-        model_path: str = DEFAULT_MODEL_PATH,
+        model_path: str | Path | None = None,
         labels: list[str] | None = None,
         input_size: int = DEFAULT_INPUT_SIZE,
     ) -> None:
-        self.model_path = Path(model_path)
+        self.model_path = (
+            DEFAULT_MODEL_PATH if model_path is None else Path(model_path)
+        )
         self.labels = labels or COFFEE_DISEASE_LABELS
         self.input_size = (input_size, input_size)
 

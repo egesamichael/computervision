@@ -3,4 +3,5 @@ gunicorn==23.0.0
 Pillow==11.1.0
 # TensorFlow does not currently publish wheels for Python 3.14.
 # Use this project with Python 3.11 or 3.12 on macOS/Linux.
-tensorflow==2.21.0
+#tensorflow==2.21.0
+tensorflow>=2.13,<2.16
