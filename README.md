@@ -31,6 +31,28 @@ If the model file is missing, the app automatically falls back to a generic Imag
 
 Replace the model file with your trained coffee disease weights for production use. The fallback ImageNet model is only for demo purposes.
 
+## Teachable Machine Model Conversion (Recommended)
+
+Some Teachable Machine exports are legacy `.h5` models that do not load cleanly in
+TensorFlow 2.21 / Keras 3. Convert once to a `.keras` file using a Python 3.11
+environment with TensorFlow 2.13.x:
+
+```bash
+python3.11 -m venv /tmp/tm-convert
+source /tmp/tm-convert/bin/activate
+pip install --upgrade pip
+pip install "tensorflow==2.13.*"
+python scripts/convert_teachable_model.py \
+  --in models/keras_model.h5 \
+  --out models/coffee_disease_compatible.keras
+```
+
+Then set:
+
+```bash
+export COFFEE_MODEL_PATH="/absolute/path/to/coffee_disease_compatible.keras"
+```
+
 ## Project Layout
 
 ```text

@@ -124,6 +124,37 @@ class CoffeeDiseaseClassifier:
                     if not self.model_path.exists():
                         raise FileNotFoundError(f"Model not found at {self.model_path}")
 
+                    def _register_legacy_depthwise():
+                        class LegacyDepthwiseConv2D(tf.keras.layers.DepthwiseConv2D):
+                            def __init__(self, *args, **kwargs):
+                                kwargs.pop("groups", None)
+                                super().__init__(*args, **kwargs)
+
+                            @classmethod
+                            def from_config(cls, config):
+                                config.pop("groups", None)
+                                return super().from_config(config)
+
+                        try:
+                            decorator = tf.keras.saving.register_keras_serializable(
+                                package="Legacy"
+                            )
+                            LegacyDepthwiseConv2D = decorator(LegacyDepthwiseConv2D)
+                        except Exception:
+                            pass
+
+                        try:
+                            import keras
+
+                            decorator = keras.saving.register_keras_serializable(
+                                package="Legacy"
+                            )
+                            LegacyDepthwiseConv2D = decorator(LegacyDepthwiseConv2D)
+                        except Exception:
+                            pass
+
+                        return LegacyDepthwiseConv2D
+
                     load_path = self.model_path
                     temp_dir = None
                     if load_path.suffix == ".keras" and not zipfile.is_zipfile(load_path):
@@ -145,22 +176,15 @@ class CoffeeDiseaseClassifier:
                                 "and does not look like an HDF5 file."
                             )
 
-                    class LegacyDepthwiseConv2D(tf.keras.layers.DepthwiseConv2D):
-                        def __init__(self, *args, **kwargs):
-                            kwargs.pop("groups", None)
-                            super().__init__(*args, **kwargs)
-
-                        @classmethod
-                        def from_config(cls, config):
-                            config.pop("groups", None)
-                            return super().from_config(config)
+                    LegacyDepthwiseConv2D = _register_legacy_depthwise()
 
                     def _call_loader(loader, *, label: str):
                         print(f"🔁 Trying {label}...")
                         kwargs = {
                             "compile": False,
                             "custom_objects": {
-                                "DepthwiseConv2D": LegacyDepthwiseConv2D
+                                "DepthwiseConv2D": LegacyDepthwiseConv2D,
+                                "LegacyDepthwiseConv2D": LegacyDepthwiseConv2D,
                             },
                         }
                         try:
